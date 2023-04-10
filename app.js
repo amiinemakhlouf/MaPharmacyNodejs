@@ -1,6 +1,8 @@
 const { Sequelize, DataTypes } = require('sequelize');
 const bodyParser = require('body-parser');
 const bcrypt = require('bcrypt');
+const jwt = require('jsonwebtoken');
+
 
 
 
@@ -14,12 +16,11 @@ const sequelize = new Sequelize('postgres://postgres:mysecret@localhost:5437/pos
 const User = sequelize.define('User', {
     email: {
       type: DataTypes.STRING,
-      unique: true,
       allowNull: false
     },
     password: {
       type: DataTypes.STRING,
-      allowNull: false
+     
     },
     username: {
         type: DataTypes.STRING,
@@ -30,12 +31,20 @@ const User = sequelize.define('User', {
   }
 );
 User.beforeCreate(async (user, options) => {
-  const hashedPassword = await bcrypt.hash(user.password, 10);
-  user.password = hashedPassword;
+  if(user.password)
+  {
+    const hashedPassword = await bcrypt.hash(user.password, 10);
+    user.password = hashedPassword;
+  }
+  
 });
 User.beforeUpdate(async (user, options) => {
-  const hashedPassword = await bcrypt.hash(user.password, 10);
+  if(user.password){
+    const hashedPassword = await bcrypt.hash(user.password, 10);
   user.password = hashedPassword;
+
+  }
+  
 });
 
 User.destroy({ where: { email: 'amiinemakhlouf@gmail.com' } })
@@ -66,28 +75,34 @@ app.use(bodyParser.urlencoded({ extended: true }));
 app.post('/api/register', async (req, res) => {
   const { email, password, username } = req.body;
 
-
-
-
-  try {
-    await sequelize.sync();
-    const user = await User.findOne({ where: { email: email } });
-
-    if (user) {
-      res.status(500).json("User already exists");
-      console.log(user);
-    } else {
-      
-        const code= generateRandomString()
-        sendEmailOtp(email,code)
-        listOfOtpRegister.push({code:code,email:email,password:password,username:username})
-        res.status(200).json({respone:"one more step"});
-      } 
+  try{
+  const user = await User.findOne({ 
+    where: { 
+      email: email,
+      password: {
+        [Sequelize.Op.not]: null // Use Sequelize.Op.not to specify "not null" condition
+      }
     }
-   catch (error) {
-    console.log(error);
-    res.status(500).json("Something went wrong");
-  }
+  });
+
+  if (user) {
+    res.status(500).json("User already exists");
+    console.log(user);
+  } else {
+    const code = generateRandomString();
+    sendEmailOtp(email, code);
+    listOfOtpRegister.push({code: code, email: email, password: password, username: username});
+    res.status(200).json({response: "one more step"});
+  } 
+} catch (error) {
+  console.log(error);
+  res.status(500).json("Something went wrong");
+}
+
+
+
+
+
 });
 
 
@@ -95,17 +110,19 @@ app.post('/api/register', async (req, res) => {
 
 
 // Register a route for sending a confirmation email
+
 app.post('/api/account/confirmation', async(req, res) => {
   const { email, code } = req.body;
   let otpFound = false;
-  var password="";
-      var username="";
+  var password = "";
+  var username = "";
+  console.log(email+"is my email")
 
   for (const otp of listOfOtpRegister) {
     if (otp.code === code && otp.email === email) {
       otpFound = true;
-      password=otp.password
-      username=otp.username
+      password = otp.password;
+      username = otp.username;
       break;
     }
   }
@@ -113,19 +130,52 @@ app.post('/api/account/confirmation', async(req, res) => {
   if (otpFound) {
     try {
       await sequelize.sync();
+
+      const user = await User.findOrCreate({
+        where: { email: email }, // Search by email
+        
+         // Default values for creating new record, including fields to update
+      }).then(([user, created]) => {
+      user.password=password
+      user.username=username
+      user.save()
+      const payload = { user: user.id };
+      const options = { expiresIn: '1h' }; // Example options for JWT expiration time
+
+      const token = jwt.sign(payload, "secretKey", options);
+      res.set('Authorization', `Bearer ${token}`); // Update headers with res.set()
+
+      console.log(token);
+
+      res.status(200).json({ username: "welcome" });
+      })
+     .catch(()=>{
+      User.create({email:email,username,email:email,password:password}).then(
+       user =>{
+        const payload = { user: user.id };
+        const options = { expiresIn: '1h' }; // Example options for JWT expiration time
+  
+        const token = jwt.sign(payload, "secretKey", options);
+        res.set('Authorization', `Bearer ${token}`); // Update headers with res.set()
+  
+        console.log(token);
+  
+        res.status(200).json({ username: "welcome" });
+  
+       } 
+      )
       
-      const customer = await User.create({ email, password, username });
-      res.status(200).json({username: "welcome"});
+
+
+     })
     } catch (error) {
       console.error(error);
-      res.status(500).json({response: "Something went wrong"});
+      res.status(500).json({ response: "Something went wrong" });
     }
   } else {
     res.status(400).send("wrong password");
   }
-})
-
-
+});
 
 // Start the Express app
 const port = process.env.PORT || 3000;
@@ -175,11 +225,12 @@ const details = {
   mailTransporter.sendMail(details, (err) => {
     if (err) {
       console.log('email not sent', err);
-      res.status(500).send('Failed to send confirmation email');
+      
     } else {
       console.log('email sent');
       res.send('Confirmation email sent');
-      listOfOtpRegister.push({email:email,code:code})
+      listOfOtpRegister.push({email:email,code:code,
+      })
     }
   });
   
@@ -188,6 +239,9 @@ const details = {
 // login
 app.post('/api/login', async(req, res) => {
   const { email, password } = req.body;
+  if(password){
+
+  
 
   User.findOne({
     where: {
@@ -204,6 +258,7 @@ app.post('/api/login', async(req, res) => {
     
         if (result) {
           console.log('User', "amiine", 'logged in successfully!');
+
           res.status(200).json({username:user.username,email:user.email})
         } else {
           
@@ -219,6 +274,10 @@ app.post('/api/login', async(req, res) => {
   .catch((error) => {
     console.error(error);
   });
+} else{
+  res.status(400).send("user not exist")
+
+}
 
 
   
@@ -241,6 +300,7 @@ if (emailExists) {
   
   res.status(400).send("aucun compte lié a cet email")
 }
+})
 
 app.post('/api/usr/otp_check',(req,res)=>{
 
@@ -249,7 +309,7 @@ app.post('/api/usr/otp_check',(req,res)=>{
 
 
 for (const otp of listOfOtpReset) {
-    if (otp.code === code && otp.email === email) {
+    if (otp.code === code && otp.email === email   ) {
       otpFound = true;
       break;
     }
@@ -288,11 +348,48 @@ app.post('/api/password/reset', async (req, res) => {
   }
 });
 
+app.post('/apo', async (req, res) => {
+  
+    const { email, username } = req.body;
+    try {
+      const user = await User.findOne({
+        where: {
+          email: email
+        }
+      });
+      if (user) {
 
+        const payload = { user: user.id };
+        const options = { expiresIn: '1h' }; // Example options for JWT expiration time
+  
+        const token = jwt.sign(payload, "secretKey", options);
+        res.set('Authorization', `Bearer ${token}`); // Update headers with res.set()
+  
+        console.log(token);
+  
+        res.status(200).json({ username: username,email:email });
+      
 
+      } else {
+        await sequelize.sync();
 
+        const user = await User.create({ email:email,username:username, });
+        const payload = { user: user.id };
+        const options = { expiresIn: '1h' }; // Example options for JWT expiration time
+  
+        const token = jwt.sign(payload, "secretKey", options);
+        res.set('Authorization', `Bearer ${token}`); // Update headers with res.set()
+  
+        console.log(token);
+  
+        res.status(200).json({ username: user.username,email:user.email });
+      
+      }
+    } catch (error) {
+      console.error('Error occurred:', error);
+    }
+});
 
-})
 
 
 
