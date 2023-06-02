@@ -2,6 +2,8 @@ const { Sequelize, DataTypes } = require('sequelize');
 const bodyParser = require('body-parser');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
+const cors = require('cors');
+
 
 
 
@@ -16,7 +18,8 @@ const sequelize = new Sequelize('postgres://postgres:mysecret@localhost:5437/pos
 const User = sequelize.define('User', {
     email: {
       type: DataTypes.STRING,
-      allowNull: false
+      allowNull: false,
+      unique: true
     },
     password: {
       type: DataTypes.STRING,
@@ -30,6 +33,93 @@ const User = sequelize.define('User', {
 
   }
 );
+User.sync();
+const Admin = sequelize.define('Admin', {
+  email: {
+    type: DataTypes.STRING,
+    allowNull: false
+  },
+  password: {
+    type: DataTypes.STRING,
+   
+  },
+    
+
+},  {tableName: 'admin' }// Specify the table name here
+
+);
+
+const Reminder = sequelize.define('Reminder', {
+  medicationName: {
+    type: DataTypes.STRING,
+    allowNull: false
+  },
+  dose: {
+    type: DataTypes.STRING,
+    allowNull: false
+  },
+  time: {
+    type: DataTypes.STRING,
+    allowNull: false
+  },
+  reminderTime: {
+    type: DataTypes.STRING,
+    allowNull: false
+  },
+  personName: {
+    type: DataTypes.STRING,
+    allowNull: false
+  },
+  userEmail: {
+    type: DataTypes.STRING,
+    allowNull: false,
+    references: {
+      model: 'Users',
+      key: 'email'
+    }
+  }
+}, {
+  // You can specify additional configuration options here
+});
+
+// Define the association with the User model
+Reminder.belongsTo(User, { foreignKey: 'userEmail', targetKey: 'email' });
+
+// Now you can synchronize the models with the database to create the tables
+// (Make sure your Sequelize instance is properly configured before running this)
+Reminder.sync();
+User.sync();
+
+
+Admin.beforeCreate(async (admin, options) => {
+  if(admin.password)
+  {
+    const hashedPassword = await bcrypt.hash(admin.password, 10);
+    admin.password = hashedPassword;
+  }
+  
+});
+Admin.create({
+  email: 'amiinemakhlouf@gmail.com',
+  password: '12345678'
+})
+  .then((admin) => {
+    console.log('Admin record created:', admin);
+  })
+  .catch((error) => {
+    console.error('Error creating admin record:', error);
+  });
+sequelize.sync()
+  .then(() => {
+    console.log('Models synced with the database.');
+  })
+  .catch((error) => {
+    console.error('Error syncing models:', error);
+  });
+
+
+
+
 User.beforeCreate(async (user, options) => {
   if(user.password)
   {
@@ -64,6 +154,7 @@ User.destroy({ where: { email: 'amiinemakhlouf@gmail.com' } })
 // Create an Express app
 const express = require('express');
 const app = express();
+app.use(cors())
 app.use(bodyParser.json());
 
 // Parse URL-encoded request body
@@ -91,7 +182,9 @@ app.post('/api/register', async (req, res) => {
   } else {
     const code = generateRandomString();
     sendEmailOtp(email, code);
-    listOfOtpRegister.push({code: code, email: email, password: password, username: username});
+    listOfOtpRegister.push({code: code, email: email, password: password, username: username,lifeTime:Date.now()+300000});
+    console.log( "my code is"+code)
+    console.log("my code is"+email)
     res.status(200).json({response: "one more step"});
   } 
 } catch (error) {
@@ -119,11 +212,18 @@ app.post('/api/account/confirmation', async(req, res) => {
   console.log(email+"is my email")
 
   for (const otp of listOfOtpRegister) {
-    if (otp.code === code && otp.email === email) {
+    console.log("the code    "+ otp.code)
+    console.log("the email    " +otp.email)
+    if (otp.code == code && otp.email == email ) {
       otpFound = true;
+      console.log("equal")
       password = otp.password;
       username = otp.username;
       break;
+    }
+    else
+    {
+      
     }
   }
 
@@ -173,12 +273,12 @@ app.post('/api/account/confirmation', async(req, res) => {
       res.status(500).json({ response: "Something went wrong" });
     }
   } else {
-    res.status(400).send("wrong password");
+    res.status(406).send("wrong password");
   }
 });
 
 // Start the Express app
-const port = process.env.PORT || 3000;
+const port = process.env.PORT || 3010;
 app.listen(port, () => {
   console.log(`Listening on port ${port}`);
 });
@@ -210,13 +310,13 @@ function sendEmailOtp(email,code)
 const mailTransporter = nodeMailer.createTransport({
   service: 'gmail',
   auth: {
-    user: 'almountakhabtn@gmail.com',
-    pass: 'bbwjojspfaqueaaf',
+    user: 'mapharmacieotp@gmail.com',
+    pass: 'rppelscerzghmcsb',
   },
 });
 
 const details = {
-  from: 'almountakhabtn@gmail.com',
+  from: 'mapharmacieotp@gmail.com',
   to: email,
   subject: 'otp confirmation',
   text: code,
@@ -228,9 +328,10 @@ const details = {
       
     } else {
       console.log('email sent');
+
       res.send('Confirmation email sent');
-      listOfOtpRegister.push({email:email,code:code,
-      })
+      listOfOtpRegister.push({email:email,code:code,lifeTime:Date.now()+300000})
+      console.log("i saved pbro")
     }
   });
   
@@ -258,24 +359,29 @@ app.post('/api/login', async(req, res) => {
     
         if (result) {
           console.log('User', "amiine", 'logged in successfully!');
+          const payload = { user: user.id };
+          const options = { expiresIn: '1h' }; // Example options for JWT expiration time
+  
+          const token = jwt.sign(payload, "secretKey", options);
+        res.set('Authorization', `Bearer ${token}`); // Upd
 
           res.status(200).json({username:user.username,email:user.email})
         } else {
           
-          res.status(400).send("wrong password")
+          res.status(400).send("Mot de passe incorrect")
         }
       });
 
 
     } else {
-      res.status(400).send("user not exist")
+      res.status(400).send("Email inexistant")
     }
   })
   .catch((error) => {
     console.error(error);
   });
 } else{
-  res.status(400).send("user not exist")
+  res.status(400).send("Email inexistant")
 
 }
 
@@ -293,7 +399,7 @@ app.post('/api/user/reset_password', async(req, res) => {
 if (emailExists) {
   const code= generateRandomString()
   sendEmailOtp(email,code)
-  listOfOtpReset.push({email:email,code:code})
+  listOfOtpReset.push({email:email,code:code,lifeTime:Date.now()+300000})
         res.status(200).json({response:"email exist"})
         
 } else {
@@ -309,7 +415,7 @@ app.post('/api/usr/otp_check',(req,res)=>{
 
 
 for (const otp of listOfOtpReset) {
-    if (otp.code === code && otp.email === email   ) {
+    if (otp.code === code && otp.email === email && Date.now()<otp.lifeTime   ) {
       otpFound = true;
       break;
     }
@@ -346,6 +452,14 @@ app.post('/api/password/reset', async (req, res) => {
     console.error(error);
     res.status(500).json({ error: "Internal server error" });
   }
+});
+
+app.post('/api/reminder/save', async (req, res) => {
+  
+    const { medicationName, patientName,form,description,firstDate,endDate } = req.body;
+    medicationName
+    
+  
 });
 
 app.post('/apo', async (req, res) => {
@@ -391,7 +505,38 @@ app.post('/apo', async (req, res) => {
 });
 
 
+app.post('/api/admin/login', async (req, res) => {
+  // Perform authentication logic and verify the credentials
+  console.log("before email")
+  const { email, password } = req.body;
+  console.log(email)
+  console.log(password)
 
+  try {
+    const admin = await Admin.findOne({ where: { email } });
+
+    if (admin) {
+      const passwordMatch = await bcrypt.compare(password, admin.password);
+
+      if (passwordMatch) {
+        // Generate the JWT
+        const token = jwt.sign({ email: admin.email }, "secretKey");
+
+        // Send the JWT as a Bearer token in the response
+        res.status(200).json({ token: `Bearer ${token}` });
+      } else {
+        res.status(401).json({ error: 'Invalid credentials' });
+      }
+    } else {
+      res.status(401).json({ error: 'Invalid credentials' });
+    }
+  } catch (error) {
+    console.error('Error authenticating admin:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.use(cors());
 
 
 
