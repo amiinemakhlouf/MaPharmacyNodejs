@@ -16,38 +16,66 @@ const sequelize = new Sequelize('postgres://postgres:mysecret@localhost:5437/pos
 
 // Define the Account model
 const User = sequelize.define('User', {
-    email: {
-      type: DataTypes.STRING,
-      allowNull: false,
-      unique: true
-    },
-    password: {
-      type: DataTypes.STRING,
-     
-    },
-    username: {
-        type: DataTypes.STRING,
-        allowNull: false
-      }
-      
-
+  email: {
+    type: DataTypes.STRING,
+    allowNull: false,
+    unique: true
+  },
+  password: {
+    type: DataTypes.STRING
+  },
+  username: {
+    type: DataTypes.STRING,
   }
-);
-User.sync();
+});
+
 const Admin = sequelize.define('Admin', {
   email: {
     type: DataTypes.STRING,
     allowNull: false
   },
   password: {
+    type: DataTypes.STRING
+  }
+}, {
+  tableName: 'admin'
+});
+
+const Pharmacy = sequelize.define('Pharmacy', {
+  name: {
     type: DataTypes.STRING,
-   
+    allowNull: false,
   },
-    
+  streetName: {
+    type: DataTypes.STRING,
+    allowNull: false,
+  },
+  workingHourStart: {
+    type: DataTypes.STRING,
+    allowNull: false,
+  },
+  workingHourEnd: {
+    type: DataTypes.STRING,
+    allowNull: false,
+  },
+  phoneNumber: {
+    type: DataTypes.STRING,
+    allowNull: false,
+  },
+  rate: {
+    type: DataTypes.FLOAT,
+    allowNull: false,
+  },
+  longitude: {
+    type: DataTypes.FLOAT,
+    allowNull: false,
+  },
+  latitude: {
+    type: DataTypes.FLOAT,
+    allowNull: false,
+  },
+});
 
-},  {tableName: 'admin' }// Specify the table name here
-
-);
 
 const Reminder = sequelize.define('Reminder', {
   medicationName: {
@@ -58,10 +86,7 @@ const Reminder = sequelize.define('Reminder', {
     type: DataTypes.STRING,
     allowNull: false
   },
-  time: {
-    type: DataTypes.STRING,
-    allowNull: false
-  },
+  
   reminderTime: {
     type: DataTypes.STRING,
     allowNull: false
@@ -70,35 +95,93 @@ const Reminder = sequelize.define('Reminder', {
     type: DataTypes.STRING,
     allowNull: false
   },
+  startDate:{
+    type:DataTypes.STRING
+
+  },
+  endDate:{
+    type:DataTypes.STRING
+  },
+  moment:{
+    type:DataTypes.INTEGER
+  }
+  ,
   userEmail: {
     type: DataTypes.STRING,
     allowNull: false,
     references: {
-      model: 'Users',
+      model: User,
       key: 'email'
     }
   }
-}, {
-  // You can specify additional configuration options here
 });
+
+const Medication = sequelize.define('medication', {
+  id: {
+    type: DataTypes.INTEGER,
+    primaryKey: true,
+    autoIncrement: true
+  },
+  name: {
+    type: DataTypes.STRING
+  },
+  codabar: {
+    type: DataTypes.STRING
+  },
+  type: {
+    type: DataTypes.STRING
+  },
+  additionalDescription: {
+    type: DataTypes.STRING
+  },
+  unit: {
+    type: DataTypes.STRING
+  },
+  quantity: {
+    type: DataTypes.FLOAT
+  },
+  image: {
+    type: DataTypes.BLOB('long')
+  }
+});
+
+
 
 // Define the association with the User model
 Reminder.belongsTo(User, { foreignKey: 'userEmail', targetKey: 'email' });
 
-// Now you can synchronize the models with the database to create the tables
-// (Make sure your Sequelize instance is properly configured before running this)
-Reminder.sync();
-User.sync();
+// Define hooks to hash passwords before creating and updating users and admins
+User.beforeCreate(async (user) => {
+  if (user.password) {
+    const hashedPassword = await bcrypt.hash(user.password, 10);
+    user.password = hashedPassword;
+  }
+});
 
+User.beforeUpdate(async (user) => {
+  if (user.password) {
+    const hashedPassword = await bcrypt.hash(user.password, 10);
+    user.password = hashedPassword;
+  }
+});
 
-Admin.beforeCreate(async (admin, options) => {
-  if(admin.password)
-  {
+Admin.beforeCreate(async (admin) => {
+  if (admin.password) {
     const hashedPassword = await bcrypt.hash(admin.password, 10);
     admin.password = hashedPassword;
   }
-  
 });
+
+// Sync the models with the database
+sequelize.sync()
+  .then(() => {
+    console.log('Models synced with the database.');
+  })
+  .catch((error) => {
+    console.error('Error syncing models:', error);
+  });
+
+// Create an admin record
 Admin.create({
   email: 'amiinemakhlouf@gmail.com',
   password: '12345678'
@@ -109,18 +192,12 @@ Admin.create({
   .catch((error) => {
     console.error('Error creating admin record:', error);
   });
-sequelize.sync()
-  .then(() => {
-    console.log('Models synced with the database.');
-  })
-  .catch((error) => {
-    console.error('Error syncing models:', error);
-  });
 
 
 
 
-User.beforeCreate(async (user, options) => {
+
+/*User.beforeCreate(async (user, options) => {
   if(user.password)
   {
     const hashedPassword = await bcrypt.hash(user.password, 10);
@@ -136,15 +213,16 @@ User.beforeUpdate(async (user, options) => {
   }
   
 });
+*/
 
-User.destroy({ where: { email: 'amiinemakhlouf@gmail.com' } })
+/*User.destroy({ where: { email: 'amiinemakhlouf@gmail.com' } })
   .then(() => {
     console.log('Users deleted');
   })
   .catch((error) => {
     console.error(error);
   });
- 
+ */
   
 
   const listOfOtpRegister=[]
@@ -202,9 +280,10 @@ app.post('/api/register', async (req, res) => {
   
 
 
-// Register a route for sending a confirmation email
+// Register a endpoint for sending a confirmation email
 
 app.post('/api/account/confirmation', async(req, res) => {
+  console.log("ahlem la tanam")
   const { email, code } = req.body;
   let otpFound = false;
   var password = "";
@@ -218,6 +297,7 @@ app.post('/api/account/confirmation', async(req, res) => {
       otpFound = true;
       console.log("equal")
       password = otp.password;
+      console.log("password is "+password)
       username = otp.username;
       break;
     }
@@ -232,10 +312,12 @@ app.post('/api/account/confirmation', async(req, res) => {
       await sequelize.sync();
 
       const user = await User.findOrCreate({
-        where: { email: email }, // Search by email
+        where: { email: email  }, // Search by email
         
          // Default values for creating new record, including fields to update
       }).then(([user, created]) => {
+        console.log("inserted")
+      console.log(password)
       user.password=password
       user.username=username
       user.save()
@@ -249,8 +331,10 @@ app.post('/api/account/confirmation', async(req, res) => {
 
       res.status(200).json({ username: "welcome" });
       })
-     .catch(()=>{
-      User.create({email:email,username,email:email,password:password}).then(
+     .catch((error)=>{
+      console.log("inseted1")
+      console.log("Error:", error.message);
+      User.create({email:email,password:password,username:"hedi"}).then(
        user =>{
         const payload = { user: user.id };
         const options = { expiresIn: '1h' }; // Example options for JWT expiration time
@@ -338,56 +422,55 @@ const details = {
 }
 
 // login
-app.post('/api/login', async(req, res) => {
+app.post('/api/login', async (req, res) => {
+  console.log("hello");
   const { email, password } = req.body;
-  if(password){
-
+  console.log(password);
   
-
-  User.findOne({
-    where: {
-      email: email
-    }
-  })
-  .then((user) => {
-    if (user) {
-      bcrypt.compare(password, user.password, (err, result) => {
-        if (err) {
-          console.error(err);
-          return;
-        }
-    
-        if (result) {
-          console.log('User', "amiine", 'logged in successfully!');
-          const payload = { user: user.id };
-          const options = { expiresIn: '1h' }; // Example options for JWT expiration time
-  
-          const token = jwt.sign(payload, "secretKey", options);
-        res.set('Authorization', `Bearer ${token}`); // Upd
-
-          res.status(200).json({username:user.username,email:user.email})
-        } else {
-          
-          res.status(400).send("Mot de passe incorrect")
+  if (password) {
+    try {
+      const user = await User.findOne({
+        where: {
+          email: email
         }
       });
 
+      if (user) {
+        console.log("hechmi");
+        console.log(email);
 
-    } else {
-      res.status(400).send("Email inexistant")
+
+        const myPassword= await bcrypt.hash(password,10);
+        console.log(myPassword)
+        const result = await bcrypt.compare(password, user.password);
+        console.log("is password match"+ result)
+        console.log("bassword "+password)
+        console.log("hashed bassword  "+user.password)
+        if (result) {
+          console.log('User logged in successfully!');
+          const payload = { user: user.id };
+          const options = { expiresIn: '1h' }; // Example options for JWT expiration time
+          const token = jwt.sign(payload, "secretKey", options);
+          res.set('Authorization', `Bearer ${token}`);
+          console.log("riadh");
+          res.status(200).json({ username: user.username, email: user.email });
+        } else {
+          console.log("bora");
+          res.status(400).send("Mot de passe incorrect");
+        }
+      } else {
+        console.log("jilani");
+        res.status(400).send("Email inexistant");
+      }
+    } catch (error) {
+      console.error(error);
+      console.log("ezzedine");
     }
-  })
-  .catch((error) => {
-    console.error(error);
-  });
-} else{
-  res.status(400).send("Email inexistant")
+  } else {
+    res.status(400).send("Mot de passe manquant");
+  }
+});
 
-}
-
-
-  
-})
 
 
 //forgetPAssword
@@ -455,12 +538,81 @@ app.post('/api/password/reset', async (req, res) => {
 });
 
 app.post('/api/reminder/save', async (req, res) => {
-  
-    const { medicationName, patientName,form,description,firstDate,endDate } = req.body;
-    medicationName
-    
-  
+ 
+ /* const token = req.headers.authorization.substring(7);
+  console.log(token)
+  const decoded = jwt.verify(token, "secretKey");
+  const {email}=decoded
+ console.log("3eljia")
+  console.log(email)*/
+ 
+
+
+ 
+  try {
+    const { medicationName, dose, reminderTime, personName,startDate,endDate, userEmail,moment } = req.body;
+
+    // Create a new Reminder instance with the provided values
+    const reminder = await Reminder.create({
+      medicationName,
+      dose,
+      reminderTime,
+      personName,
+      startDate,
+      endDate,
+      userEmail,
+      moment
+    });
+
+    // Return the created reminder JSON to the frontend
+    res.json(reminder.toJSON());
+  } catch (error) {
+    // Handle any errors that occur during the saving process
+    console.error(error);
+    res.status(500).json({ error: 'Failed to save the reminder' });
+  }
 });
+app.get('/api/reminders', async (req, res) => {
+  try {
+    // Fetch all reminders from the database
+    const reminders = await Reminder.findAll();
+
+    // Return the reminders as JSON response
+    res.json(reminders);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Failed to fetch reminders' });
+  }
+});
+
+
+app.post('/api/pharmacy/save', async (req, res) => {
+  try {
+    const { name, streetName, workingHourStart,workingHourEnd, phoneNumber, rate } = req.body;
+    // Create a new pharmacy instance
+    const pharmacy = await Pharmacy.create({ name, streetName, workingHourStart,workingHourEnd, phoneNumber, rate });
+    // Send a success response
+    res.status(201).json({ success: true, pharmacy });
+  } catch (error) {
+    console.error('Error saving pharmacy:', error);
+    // Send an error response
+    res.status(500).json({ success: false, error: 'Failed to save pharmacy' });
+  }
+});
+app.get('/api/pharmacy', async (req, res) => {
+  try {
+    // Retrieve all pharmacies from the database
+    const pharmacies = await Pharmacy.findAll();
+
+    // Send the pharmacies as the response
+    res.json(pharmacies);
+  } catch (error) {
+    console.error('Error retrieving pharmacies:', error);
+    // Send an error response
+    res.status(500).json({ success: false, error: 'Failed to retrieve pharmacies' });
+  }
+});
+
 
 app.post('/apo', async (req, res) => {
   
@@ -517,6 +669,7 @@ app.post('/api/admin/login', async (req, res) => {
 
     if (admin) {
       const passwordMatch = await bcrypt.compare(password, admin.password);
+      console.log("is password match"+ passwordMatch)
 
       if (passwordMatch) {
         // Generate the JWT
@@ -536,6 +689,23 @@ app.post('/api/admin/login', async (req, res) => {
   }
 });
 
+app.post('/medications', async (req, res) => {
+  try {
+    const medication = await Medication.create(req.body);
+    res.status(201).json(medication);
+  } catch (error) {
+    res.status(500).json({ error: 'An error occurred while creating the medication.' });
+  }
+});
+
+app.get('/medications', async (req, res) => {
+  try {
+    const medications = await Medication.findAll();
+    res.json(medications);
+  } catch (error) {
+    res.status(500).json({ error: 'An error occurred while retrieving medications.' });
+  }
+});
 app.use(cors());
 
 
