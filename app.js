@@ -106,6 +106,9 @@ const Reminder = sequelize.define('Reminder', {
     type:DataTypes.INTEGER
   }
   ,
+  days:{
+    type:DataTypes.STRING
+  },
   userEmail: {
     type: DataTypes.STRING,
     allowNull: false,
@@ -115,35 +118,44 @@ const Reminder = sequelize.define('Reminder', {
     }
   }
 });
-
-const Medication = sequelize.define('medication', {
+const Medication = sequelize.define('Medication', {
   id: {
     type: DataTypes.INTEGER,
     primaryKey: true,
-    autoIncrement: true
+    autoIncrement: true,
   },
   name: {
-    type: DataTypes.STRING
+    type: DataTypes.STRING,
+    allowNull: true,
   },
   codabar: {
-    type: DataTypes.STRING
+    type: DataTypes.STRING,
+    allowNull: true,
   },
   type: {
-    type: DataTypes.STRING
+    type: DataTypes.STRING,
+    allowNull: true,
   },
   additionalDescription: {
-    type: DataTypes.STRING
+    type: DataTypes.STRING,
+    allowNull: true,
   },
   unit: {
-    type: DataTypes.STRING
+    type: DataTypes.STRING,
+    allowNull: true,
   },
   quantity: {
-    type: DataTypes.FLOAT
+    type: DataTypes.FLOAT,
+    allowNull: true,
   },
   image: {
-    type: DataTypes.BLOB('long')
-  }
+    type: DataTypes.STRING,
+    allowNull: true,
+  },
 });
+
+
+
 
 
 
@@ -550,7 +562,7 @@ app.post('/api/reminder/save', async (req, res) => {
 
  
   try {
-    const { medicationName, dose, reminderTime, personName,startDate,endDate, userEmail,moment } = req.body;
+    const { medicationName, dose, reminderTime, personName,startDate,endDate,days, userEmail,moment } = req.body;
 
     // Create a new Reminder instance with the provided values
     const reminder = await Reminder.create({
@@ -561,7 +573,8 @@ app.post('/api/reminder/save', async (req, res) => {
       startDate,
       endDate,
       userEmail,
-      moment
+      moment,
+      days
     });
 
     // Return the created reminder JSON to the frontend
@@ -689,23 +702,59 @@ app.post('/api/admin/login', async (req, res) => {
   }
 });
 
-app.post('/medications', async (req, res) => {
-  try {
-    const medication = await Medication.create(req.body);
-    res.status(201).json(medication);
-  } catch (error) {
-    res.status(500).json({ error: 'An error occurred while creating the medication.' });
+
+const multer = require('multer');
+const path = require('path');
+
+// Define the storage configuration
+const storage = multer.diskStorage({
+  destination: '/home/amine/Desktop/', // Specify the destination directory
+  filename: (req, file, callback) => {
+    const fileName = file.originalname;
+    callback(null, fileName); // Use the original file name
   }
 });
 
-app.get('/medications', async (req, res) => {
+const upload = multer({ storage });
+app.post('/medication/save', upload.single('image'), async (req, res) => {
+  try {
+    // Access the uploaded image file using req.file
+    const image = req.file;
+
+    // Access the medication object from req.body
+    const medication = JSON.parse(req.body.medication);
+
+    // Perform any necessary operations with the image and medication data
+    // For example, save the image to the desired location and create a medication record
+
+    // Get the file path of the saved image
+    const savedImagePath = path.join('/home/amine/Desktop/', image.originalname);
+
+    // Create a medication record
+    const createdMedication = await Medication.create({ ...medication, image: savedImagePath });
+
+    res.json(createdMedication);
+  } catch (error) {
+    res.status(500).json({ error: 'Unable to create medication' });
+  }
+});
+
+
+
+
+
+
+
+
+app.get('/get/all/medications', async (req, res) => {
   try {
     const medications = await Medication.findAll();
     res.json(medications);
   } catch (error) {
-    res.status(500).json({ error: 'An error occurred while retrieving medications.' });
+    res.status(500).json({ error: 'Unable to retrieve medications' });
   }
 });
+
 app.use(cors());
 
 
